@@ -1,0 +1,8 @@
+package com.vuzix.m100empty;
+
+import android.app.Activity;
+import android.hardware.SensorEventListener;
+
+public class StoryTellingActivity extends Activity implements SensorEventListener{
+
+}

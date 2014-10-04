@@ -1,0 +1,249 @@
+package com.vuzix.m100empty;
+
+import java.io.File;
+import java.io.IOException;
+import java.text.DecimalFormat;
+import java.text.SimpleDateFormat;
+import java.util.Date;
+
+import android.app.Activity;
+import android.content.Context;
+import android.content.Intent;
+import android.graphics.Bitmap;
+import android.graphics.Camera;
+import android.hardware.Camera.Parameters;
+import android.hardware.Sensor;
+import android.hardware.SensorEvent;
+import android.hardware.SensorEventListener;
+import android.hardware.SensorManager;
+import android.net.Uri;
+import android.os.Bundle;
+import android.os.Environment;
+import android.provider.MediaStore;
+import android.util.Log;
+import android.view.SurfaceHolder;
+import android.view.SurfaceView;
+import android.widget.ImageView;
+
+public class StoryTellingActivity extends Activity implements SensorEventListener, SurfaceHolder.Callback{
+
+	
+	SensorManager mSensorManager;
+	
+	Sensor rotationVectorSensor, gravitySensor,
+	accelerationSensor, orientationSensor, gyroscopeSensor;
+	
+	static final int REQUEST_IMAGE_CAPTURE = 1;
+	static final int REQUEST_TAKE_PHOTO = 1;
+
+	private double prevX1, prevX2, prevY1, prevY2;
+	
+	String mCurrentPhotoPath;
+	
+	//a variable to store a reference to the Image View at the main.xml file
+	private ImageView iv_image;
+	//a variable to store a reference to the Surface View at the main.xml file
+    private SurfaceView sv;
+    
+    //a bitmap to display the captured image
+	private Bitmap bmp;
+	
+	//Camera variables
+	//a surface holder
+	private SurfaceHolder sHolder;  
+	//a variable to control the camera
+	private Camera mCamera;
+	//the camera parameters
+	private Parameters parameters;
+
+
+	protected void onCreate(Bundle savedInstanceState) {
+		super.onCreate(savedInstanceState);
+		setContentView(R.layout.activity_main);
+		
+		// Starting sensors
+		mSensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
+		// There are warnings, but since we are on a lower android version they are unavoidable.
+	    rotationVectorSensor = mSensorManager.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR);
+	    gravitySensor = mSensorManager.getDefaultSensor(Sensor.TYPE_GRAVITY);
+		accelerationSensor = mSensorManager.getDefaultSensor(Sensor.TYPE_LINEAR_ACCELERATION);
+		orientationSensor = mSensorManager.getDefaultSensor(Sensor.TYPE_ORIENTATION);
+		gyroscopeSensor = mSensorManager.getDefaultSensor(Sensor.TYPE_GYROSCOPE);
+		
+		
+	}
+
+	@Override
+	protected void onResume() {
+		// Register listeners for the sensor.
+	    super.onResume();
+	    mSensorManager.registerListener(this, gyroscopeSensor, SensorManager.SENSOR_DELAY_NORMAL);
+	    mSensorManager.registerListener(this, rotationVectorSensor, SensorManager.SENSOR_DELAY_NORMAL);
+	    mSensorManager.registerListener(this, gravitySensor, SensorManager.SENSOR_DELAY_NORMAL);
+	    mSensorManager.registerListener(this, accelerationSensor, SensorManager.SENSOR_DELAY_NORMAL);
+	    mSensorManager.registerListener(this, orientationSensor, SensorManager.SENSOR_DELAY_NORMAL);
+	}
+	
+	@Override
+	protected void onPause() {
+	    // Be sure to unregister the sensors when the activity pauses so we don't kill several things
+	    super.onPause();
+	    mSensorManager.unregisterListener(this);  
+	}
+
+		
+	@Override
+	public void onAccuracyChanged(Sensor sensor, int accuracy) {
+		Log.w("M100Dev","ACCURACY CHANGED: " +sensor.getName());
+	}
+
+	@Override
+	public void onSensorChanged(SensorEvent event) {
+		Sensor sensor = event.sensor;
+		
+		// string format for readability
+		DecimalFormat df = new DecimalFormat("##.##");	
+		// store values
+		String x = "X: " + df.format(event.values[0]);
+		String y = "Y: " + df.format(event.values[1]);
+		String z = "Z: " + df.format(event.values[2]);
+		double doubleX = 0, doubleY = 0, doubleZ = 0;
+
+		try {	
+			doubleX = Double.parseDouble(df.format(event.values[0]));
+			doubleY = Double.parseDouble(df.format(event.values[1]));
+			doubleZ = Double.parseDouble(df.format(event.values[2]));
+		} catch (NumberFormatException e) {
+			Log.w("M100Dev","NumberFormatException: " + e.getMessage());
+			return;
+		}
+		
+		// print info
+		switch(sensor.getType()){
+			case Sensor.TYPE_ROTATION_VECTOR:
+			break;
+			case Sensor.TYPE_GRAVITY:				
+			break;
+			case Sensor.TYPE_LINEAR_ACCELERATION:
+			break;
+			case Sensor.TYPE_ORIENTATION:
+								
+					if (Math.abs(doubleX - prevX1) > 30.0 && Math.abs(prevX1 - prevX2) > 30.0)
+					{
+						Log.w("M100Dev","SensorChanged: " + "User said Yes!" );
+						//dispatchTakePictureIntent();
+						takePicturWithoutPreview();
+					}
+					else if (Math.abs(doubleY - prevY1) > 30.0 && Math.abs(prevY1 - prevY2) > 30)
+					{
+						Log.w("M100Dev","SensorChanged: " + "No" );
+					}
+					prevX2 = prevX1;
+					prevX1 = doubleX;				
+					prevY2 = prevY1;
+					prevX1 = doubleY;
+				
+			break;
+			case Sensor.TYPE_GYROSCOPE:
+			break;
+			default:
+				Log.w("M100Dev","something interesting is happening with: "+sensor.getName());
+			break;
+		}
+		
+	}
+	
+	private void takePicturWithoutPreview() {
+        //get the Image View at the main.xml file
+        iv_image = (ImageView) findViewById(R.id.imageView);
+        
+        //get the Surface View at the main.xml file
+        sv = (SurfaceView) findViewById(R.id.surfaceView);
+        
+        //Get a surface
+        sHolder = sv.getHolder();
+        
+        //add the callback interface methods defined below as the Surface View callbacks
+        sHolder.addCallback(this);
+        
+        //tells Android that this surface will have its data constantly replaced
+        sHolder.setType(SurfaceHolder.SURFACE_TYPE_PUSH_BUFFERS);
+		
+	}
+
+	@Override
+	public void surfaceChanged(SurfaceHolder arg0, int arg1, int arg2, int arg3) {
+		 //get camera parameters
+		 parameters = mCamera.getParameters();
+		 
+		 //set camera parameters
+	     mCamera.setParameters(parameters);
+	     mCamera.startPreview();
+	     
+	     //sets what code should be executed after the picture is taken
+	     Camera.PictureCallback mCall = new Camera.PictureCallback() 
+	     {
+	    	 @Override
+	    	 public void onPictureTaken(byte[] data, Camera camera) 
+	    	 {
+	    		 //decode the data obtained by the camera into a Bitmap
+	    		 bmp = BitmapFactory.decodeByteArray(data, 0, data.length);
+	    		 //set the iv_image
+	    		 iv_image.setImageBitmap(bmp);
+	    	 }
+	     };
+	     
+	     mCamera.takePicture(null, null, mCall);
+	}
+
+	@Override
+	public void surfaceCreated(SurfaceHolder holder) {
+		// TODO Auto-generated method stub
+		
+	}
+
+	@Override
+	public void surfaceDestroyed(SurfaceHolder holder) {
+		// TODO Auto-generated method stub
+		
+	}
+
+
+	//Taking pictures that didn't work!
+	private void dispatchTakePictureIntent() {
+	    Intent takePictureIntent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
+	    // Ensure that there's a camera activity to handle the intent
+	    if (takePictureIntent.resolveActivity(getPackageManager()) != null) {
+	        // Create the File where the photo should go
+	        File photoFile = null;
+	        try {
+	            photoFile = createImageFile();
+	        } catch (IOException ex) {
+	        	Log.w("M100Dev", "dispatchTakePictureIntent: " + ex.getMessage() );
+	        }	        
+	        // Continue only if the File was successfully created
+	        if (photoFile != null) {
+	            takePictureIntent.putExtra(MediaStore.EXTRA_OUTPUT,
+	                    Uri.fromFile(photoFile));
+	            startActivityForResult(takePictureIntent, REQUEST_TAKE_PHOTO);
+	        }
+	    }
+	}
+
+	private File createImageFile() throws IOException {
+	    // Create an image file name
+	    String timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date());
+	    String imageFileName = "JPEG_" + timeStamp + "_";
+	    File storageDir = Environment.getExternalStoragePublicDirectory(
+	            Environment.DIRECTORY_PICTURES);
+	    File image = File.createTempFile(
+	        imageFileName,  /* prefix */
+	        ".jpg",         /* suffix */
+	        storageDir      /* directory */
+	    );
+	    // Save a file: path for use with ACTION_VIEW intents
+	    mCurrentPhotoPath = "file:" + image.getAbsolutePath();
+	    return image;
+	}
+
+}
